@@ -28,6 +28,7 @@ interface LogItem {
 }
 
 type TabType = "OVERVIEW" | "WHITELIST" | "RESELLERS" | "LOGS";
+type LandingSection = "HOME" | "API_ACCESS" | "RESELLER_SYSTEM" | "HOW_IT_WORKS";
 
 export default function Home() {
   // Authentication & API Config
@@ -37,6 +38,10 @@ export default function Home() {
   const [userRole, setUserRole] = useState<"ADMIN" | "RESELLER" | null>(null);
   const [currentUser, setCurrentUser] = useState<string>("");
   const [loginType, setLoginType] = useState<"ADMIN" | "RESELLER">("ADMIN");
+  
+  // Landing Page & Modal State
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [activeLandingSection, setActiveLandingSection] = useState<LandingSection>("HOME");
   
   // App Config
   const [apiUrl, setApiUrl] = useState("https://mani272uidbypass.vercel.app/api/v1");
@@ -63,7 +68,6 @@ export default function Home() {
   const [newResellerPassword, setNewResellerPassword] = useState("");
   const [newResellerCredits, setNewResellerCredits] = useState(100);
 
-  const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingUid, setDeletingUid] = useState<string | null>(null);
 
@@ -142,6 +146,7 @@ export default function Home() {
           localStorage.setItem("mono_auth", "true");
           localStorage.setItem("mono_role", "ADMIN");
           localStorage.setItem("mono_user", "ADMIN");
+          setIsLoginModalOpen(false);
           showToast("Admin session established.", "success");
           addLog("LOGIN", "Admin logged into the system.", "ADMIN");
         } else {
@@ -156,6 +161,7 @@ export default function Home() {
           localStorage.setItem("mono_auth", "true");
           localStorage.setItem("mono_role", "RESELLER");
           localStorage.setItem("mono_user", reseller.username);
+          setIsLoginModalOpen(false);
           showToast("Reseller session established.", "success");
           addLog("LOGIN", "Reseller logged in.", reseller.username);
         } else {
@@ -216,8 +222,7 @@ export default function Home() {
       return;
     }
 
-    // Deduct credits logic for Resellers
-    let creditCost = newDays; // 1 Credit = 1 Day
+    let creditCost = newDays;
     if (userRole === "RESELLER") {
       const currentReseller = resellers.find(r => r.username === currentUser);
       if (!currentReseller || currentReseller.credits < creditCost) {
@@ -225,7 +230,6 @@ export default function Home() {
         return;
       }
       
-      // Update reseller credits
       const updatedResellers = resellers.map(r => {
         if (r.username === currentUser) {
           return { ...r, credits: r.credits - creditCost, totalWhitelisted: r.totalWhitelisted + 1 };
@@ -286,7 +290,6 @@ export default function Home() {
   const handleExtendUid = async (uidToExtend: string, additionalDays: number) => {
     if (additionalDays <= 0) return;
 
-    // Deduct credits if reseller
     if (userRole === "RESELLER") {
       const currentReseller = resellers.find(r => r.username === currentUser);
       if (!currentReseller || currentReseller.credits < additionalDays) {
@@ -340,7 +343,6 @@ export default function Home() {
       showToast(apiRes.error || "UID removed locally.", "info");
     }
 
-    // Always remove from local list so ghost/old mock records don't stay stuck on screen
     const updated = uids.filter((item) => item.uid !== uidToRemove);
     saveUids(updated);
     setDeletingUid(null);
@@ -421,132 +423,330 @@ export default function Home() {
         </div>
       )}
 
+      {/* --- PUBLIC HERO LANDING PAGE --- */}
       {!isAuthenticated ? (
-        <div className="flex-1 flex flex-col relative overflow-hidden bg-black min-h-screen">
-          {/* Top Navbar Header */}
-          <header className="w-full border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md px-8 py-4 flex items-center justify-between z-20 font-mono">
-            <div>
-              <h1 className="text-base font-bold tracking-widest text-white uppercase">
-                UID BYPASS ACCES PORTAL
-              </h1>
+        <div className="flex-1 flex flex-col bg-black text-white relative font-sans selection:bg-white selection:text-black">
+          
+          {/* FLOATING NAVBAR (Inspired by screenshot pill navbar) */}
+          <nav className="fixed top-6 left-0 right-0 z-40 px-6 max-w-7xl mx-auto flex items-center justify-between pointer-events-none">
+            {/* Brand Logo */}
+            <div className="pointer-events-auto flex items-center space-x-3 bg-zinc-950/80 border border-zinc-800/80 backdrop-blur-xl px-5 py-2.5 rounded-full shadow-2xl">
+              <span className="h-2.5 w-2.5 bg-white rounded-full animate-pulse" />
+              <span className="font-extrabold tracking-wider text-base text-white font-mono">UID BYPASS</span>
             </div>
-            <div className="flex items-center space-x-2 text-[10px] tracking-widest text-zinc-500 uppercase">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>SYSTEM ONLINE</span>
-            </div>
-          </header>
 
-          <div className="flex-1 flex flex-col justify-center items-center px-4 py-12 relative">
-            <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
-
-            <div className="w-full max-w-md bg-black/80 backdrop-blur-xl border border-zinc-800 p-8 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.8)] relative z-10 font-mono">
-              <div className="text-center mb-8">
-                <h2 className="text-xl font-extrabold tracking-widest text-white uppercase mb-1">
-                  PORTAL ACCESS
-                </h2>
-                <p className="text-zinc-500 text-[10px] tracking-widest uppercase">
-                  Secure User Verification Terminal
-                </p>
-              </div>
-
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div className="flex bg-zinc-900/50 p-1 rounded-lg backdrop-blur-sm border border-zinc-800/50 relative">
+            {/* Center Floating Pill Menu */}
+            <div className="pointer-events-auto hidden md:flex items-center space-x-1 bg-zinc-950/80 border border-zinc-800/80 backdrop-blur-xl p-1.5 rounded-full shadow-2xl">
+              {[
+                { id: "HOME", label: "Home" },
+                { id: "API_ACCESS", label: "API Access" },
+                { id: "RESELLER_SYSTEM", label: "Reseller System" },
+                { id: "HOW_IT_WORKS", label: "How It Works" },
+              ].map((item) => (
                 <button
-                  type="button"
-                  onClick={() => setLoginType("ADMIN")}
-                  className={`flex-1 py-2.5 text-xs font-bold tracking-widest uppercase transition-all duration-300 rounded-md z-10 ${
-                    loginType === "ADMIN" ? "text-black shadow-lg" : "text-zinc-500 hover:text-white"
+                  key={item.id}
+                  onClick={() => {
+                    setActiveLandingSection(item.id as LandingSection);
+                    const el = document.getElementById(item.id.toLowerCase());
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                  }}
+                  className={`px-4 py-2 text-xs font-semibold rounded-full transition-all duration-300 ${
+                    activeLandingSection === item.id
+                      ? "bg-zinc-800 text-white shadow-inner"
+                      : "text-zinc-400 hover:text-white hover:bg-zinc-900/50"
                   }`}
                 >
-                  Admin
+                  {item.label}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setLoginType("RESELLER")}
-                  className={`flex-1 py-2.5 text-xs font-bold tracking-widest uppercase transition-all duration-300 rounded-md z-10 ${
-                    loginType === "RESELLER" ? "text-black shadow-lg" : "text-zinc-500 hover:text-white"
-                  }`}
-                >
-                  Reseller
-                </button>
-                <div 
-                  className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-md transition-all duration-300 ease-out z-0 ${
-                    loginType === "ADMIN" ? "left-1" : "translate-x-full left-1"
-                  }`}
-                />
-              </div>
+              ))}
+            </div>
 
-              <div>
-                <label className="block text-[10px] uppercase tracking-widest text-zinc-400 mb-2 font-medium">
-                  {loginType === "ADMIN" ? "Email Address" : "Username"}
-                </label>
-                <div className="relative group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-zinc-800 to-zinc-700 rounded-lg blur opacity-0 group-hover:opacity-30 transition duration-500"></div>
-                  <input
-                    type={loginType === "ADMIN" ? "email" : "text"}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder={loginType === "ADMIN" ? "Enter your email..." : "Enter your username..."}
-                    className="w-full relative bg-zinc-950/80 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 transition-all duration-300 placeholder:text-zinc-700 backdrop-blur-md"
-                  />
-                  <div className="absolute right-3 top-3.5 text-zinc-600 transition-colors group-hover:text-zinc-400">
-                    {loginType === "ADMIN" ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" /></svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] uppercase tracking-widest text-zinc-400 mb-2 font-medium">
-                  Password
-                </label>
-                <div className="relative group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-zinc-800 to-zinc-700 rounded-lg blur opacity-0 group-hover:opacity-30 transition duration-500"></div>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password..."
-                    className="w-full relative bg-zinc-950/80 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 transition-all duration-300 placeholder:text-zinc-700 backdrop-blur-md"
-                  />
-                </div>
-              </div>
-
-              {loginError && (
-                <div className="border border-red-500/50 bg-red-950/30 text-red-400 text-xs p-3 rounded-lg backdrop-blur-sm">
-                  <div className="flex items-center space-x-2">
-                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                    <span>{loginError}</span>
-                  </div>
-                </div>
-              )}
-
+            {/* Right Action Button (Log In) */}
+            <div className="pointer-events-auto">
               <button
-                type="submit"
-                disabled={isConnecting}
-                className="w-full relative overflow-hidden group bg-white text-black hover:text-white border border-transparent hover:border-white/20 rounded-lg py-3.5 text-xs font-bold tracking-widest uppercase transition-all duration-500 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+                onClick={() => setIsLoginModalOpen(true)}
+                className="bg-white hover:bg-zinc-200 text-black px-6 py-2.5 rounded-full text-xs font-bold tracking-wider transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:shadow-[0_0_30px_rgba(255,255,255,0.4)] flex items-center space-x-2"
               >
-                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-zinc-800 to-black opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <span className="relative z-10 flex items-center justify-center space-x-2">
-                  {isConnecting ? (
-                    <>
-                      <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                      <span>Authenticating...</span>
-                    </>
-                  ) : (
-                    <span>Access Portal</span>
-                  )}
-                </span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                </svg>
+                <span>Portal Log In</span>
               </button>
-            </form>
-          </div>
-        </div>
+            </div>
+          </nav>
+
+          {/* HERO SECTION */}
+          <section id="home" className="pt-40 pb-20 px-6 max-w-7xl mx-auto w-full flex flex-col items-center text-center relative overflow-hidden">
+            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/5 rounded-full blur-[140px] pointer-events-none" />
+
+            <div className="inline-flex items-center space-x-2 px-4 py-1.5 rounded-full bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs font-mono mb-8 backdrop-blur-md">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
+              <span>Next-Gen Identity Authorization Terminal</span>
+            </div>
+
+            <h1 className="text-4xl md:text-7xl font-extrabold text-white tracking-tight leading-tight max-w-4xl mb-6">
+              Instant UID Whitelisting & <span className="bg-gradient-to-r from-white via-zinc-400 to-zinc-600 bg-clip-text text-transparent">API Access Portal</span>
+            </h1>
+
+            <p className="text-zinc-400 text-sm md:text-lg max-w-2xl font-normal leading-relaxed mb-10">
+              High-performance automated verification system with real-time API access, multi-tier reseller management, and credit-based quota provisioning.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <button
+                onClick={() => setIsLoginModalOpen(true)}
+                className="w-full sm:w-auto bg-white text-black font-bold px-8 py-4 rounded-xl text-sm transition-all duration-300 hover:bg-zinc-200 shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+              >
+                Access Portal Console
+              </button>
+              <button
+                onClick={() => {
+                  const el = document.getElementById("api_access");
+                  if (el) el.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="w-full sm:w-auto bg-zinc-950 border border-zinc-800 hover:border-zinc-600 text-zinc-300 font-medium px-8 py-4 rounded-xl text-sm transition-all duration-300"
+              >
+                Explore API Docs
+              </button>
+            </div>
+
+            {/* Quick Stat Bar */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl mt-20 pt-10 border-t border-zinc-900">
+              <div>
+                <div className="text-3xl font-extrabold text-white font-mono">99.9%</div>
+                <div className="text-xs text-zinc-500 uppercase tracking-widest mt-1">Uptime Guarantee</div>
+              </div>
+              <div>
+                <div className="text-3xl font-extrabold text-white font-mono">&lt; 50ms</div>
+                <div className="text-xs text-zinc-500 uppercase tracking-widest mt-1">Response Latency</div>
+              </div>
+              <div>
+                <div className="text-3xl font-extrabold text-white font-mono">REST API</div>
+                <div className="text-xs text-zinc-500 uppercase tracking-widest mt-1">POST & GET Ready</div>
+              </div>
+              <div>
+                <div className="text-3xl font-extrabold text-white font-mono">Role System</div>
+                <div className="text-xs text-zinc-500 uppercase tracking-widest mt-1">Admin & Reseller</div>
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 1: API ACCESS DETAILS */}
+          <section id="api_access" className="py-20 px-6 max-w-7xl mx-auto w-full border-t border-zinc-900">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <span className="text-xs font-mono uppercase tracking-widest text-zinc-500">Developer Documentation</span>
+              <h2 className="text-3xl md:text-4xl font-bold text-white mt-2">API Access & Endpoints</h2>
+              <p className="text-zinc-400 text-sm mt-3">Integrate UID verification into your external applications with our REST API.</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Endpoint Cards */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-6 hover:border-zinc-700 transition-colors">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <span className="bg-emerald-950/60 border border-emerald-900/80 text-emerald-400 text-[10px] font-mono font-bold px-2.5 py-1 rounded">POST</span>
+                    <span className="font-mono text-sm text-white font-bold">/api/v1/uids/add</span>
+                  </div>
+                  <p className="text-xs text-zinc-400">Whitelist a target UID with a specified lifespan (days) and client name.</p>
+                </div>
+
+                <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-6 hover:border-zinc-700 transition-colors">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <span className="bg-red-950/60 border border-red-900/80 text-red-400 text-[10px] font-mono font-bold px-2.5 py-1 rounded">POST</span>
+                    <span className="font-mono text-sm text-white font-bold">/api/v1/uids/remove</span>
+                  </div>
+                  <p className="text-xs text-zinc-400">Revoke and delete a whitelisted UID immediately from the active registry.</p>
+                </div>
+
+                <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-6 hover:border-zinc-700 transition-colors">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <span className="bg-blue-950/60 border border-blue-900/80 text-blue-400 text-[10px] font-mono font-bold px-2.5 py-1 rounded">GET</span>
+                    <span className="font-mono text-sm text-white font-bold">/api/v1/uids/list</span>
+                  </div>
+                  <p className="text-xs text-zinc-400">Fetch all active whitelisted UIDs and their remaining lifespans.</p>
+                </div>
+              </div>
+
+              {/* Code Snippet Box */}
+              <div className="lg:col-span-7 bg-zinc-950 border border-zinc-800/80 rounded-2xl p-6 font-mono text-xs overflow-x-auto">
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-4 mb-4">
+                  <span className="text-zinc-400 font-bold">cURL Example</span>
+                  <span className="text-zinc-500 text-[10px]">Header: X-AUTH-KEY</span>
+                </div>
+                <pre className="text-zinc-300 leading-relaxed">
+{`curl -X POST "https://mani272uidbypass.vercel.app/api/v1/uids/add" \\
+  -H "Content-Type: application/json" \\
+  -H "X-AUTH-KEY: YOUR_API_KEY_HERE" \\
+  -d '{
+    "uid": "123456789",
+    "days": 30,
+    "name": "ClientAlpha"
+  }'`}
+                </pre>
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 2: RESELLER SYSTEM DETAILS */}
+          <section id="reseller_system" className="py-20 px-6 max-w-7xl mx-auto w-full border-t border-zinc-900">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <span className="text-xs font-mono uppercase tracking-widest text-zinc-500">Multi-Tier Architecture</span>
+              <h2 className="text-3xl md:text-4xl font-bold text-white mt-2">Reseller Management & Quotas</h2>
+              <p className="text-zinc-400 text-sm mt-3">Empower your team and distributors with credit-based UID whitelisting.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-8 text-left">
+                <div className="h-10 w-10 bg-zinc-900 border border-zinc-700 rounded-xl flex items-center justify-center text-white mb-6">🔑</div>
+                <h3 className="text-lg font-bold text-white mb-2">Dedicated Credentials</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">Admin creates Resellers with custom Username and Password. Resellers log in directly through the Portal using their credentials.</p>
+              </div>
+
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-8 text-left">
+                <div className="h-10 w-10 bg-zinc-900 border border-zinc-700 rounded-xl flex items-center justify-center text-white mb-6">💳</div>
+                <h3 className="text-lg font-bold text-white mb-2">1 Credit = 1 Day Rule</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">Simple quota math: Whitelisting 30 days costs 30 Credits. Admins can top-up reseller credit balances instantly anytime.</p>
+              </div>
+
+              <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-8 text-left">
+                <div className="h-10 w-10 bg-zinc-900 border border-zinc-700 rounded-xl flex items-center justify-center text-white mb-6">📊</div>
+                <h3 className="text-lg font-bold text-white mb-2">Audit & Log Controls</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">Every action—login, credit addition, UID creation, and deletion—is logged into the Console with user timestamps.</p>
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 3: HOW IT WORKS */}
+          <section id="how_it_works" className="py-20 px-6 max-w-7xl mx-auto w-full border-t border-zinc-900">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <span className="text-xs font-mono uppercase tracking-widest text-zinc-500">Simple 3-Step Workflow</span>
+              <h2 className="text-3xl md:text-4xl font-bold text-white mt-2">How It Works</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center font-mono">
+              <div className="bg-zinc-950 border border-zinc-800/60 p-8 rounded-2xl">
+                <div className="text-xs text-zinc-500 mb-2">STEP 01</div>
+                <h4 className="text-base font-bold text-white mb-2">Log In To Portal</h4>
+                <p className="text-xs text-zinc-400 font-sans">Admin logs in via Email/Pass, Reseller logs in via Username/Pass.</p>
+              </div>
+
+              <div className="bg-zinc-950 border border-zinc-800/60 p-8 rounded-2xl">
+                <div className="text-xs text-zinc-500 mb-2">STEP 02</div>
+                <h4 className="text-base font-bold text-white mb-2">Provide Target UID</h4>
+                <p className="text-xs text-zinc-400 font-sans">Enter Target UID, Client Identifier, and Days lifespan.</p>
+              </div>
+
+              <div className="bg-zinc-950 border border-zinc-800/60 p-8 rounded-2xl">
+                <div className="text-xs text-zinc-500 mb-2">STEP 03</div>
+                <h4 className="text-base font-bold text-white mb-2">Instant Authorization</h4>
+                <p className="text-xs text-zinc-400 font-sans">The server receives authorization and the UID is active immediately.</p>
+              </div>
+            </div>
+          </section>
+
+          {/* FOOTER */}
+          <footer className="py-12 border-t border-zinc-900 text-center text-xs text-zinc-600 font-mono">
+            <div>UID BYPASS ACCESS PORTAL • SECURED TERMINAL</div>
+          </footer>
+
+          {/* --- LOGIN MODAL (Triggered by Log In buttons) --- */}
+          {isLoginModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in font-mono">
+              <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 p-8 rounded-2xl shadow-2xl relative">
+                
+                {/* Close Button */}
+                <button
+                  onClick={() => setIsLoginModalOpen(false)}
+                  className="absolute top-4 right-4 text-zinc-500 hover:text-white p-2"
+                >
+                  ✕
+                </button>
+
+                <div className="text-center mb-8">
+                  <h2 className="text-2xl font-extrabold tracking-widest text-white uppercase mb-1">
+                    PORTAL LOGIN
+                  </h2>
+                  <p className="text-zinc-500 text-[10px] tracking-widest uppercase">
+                    Select Role and Enter Credentials
+                  </p>
+                </div>
+
+                <form onSubmit={handleLogin} className="space-y-6">
+                  {/* Admin / Reseller Switcher */}
+                  <div className="flex bg-zinc-900/50 p-1 rounded-lg border border-zinc-800 relative">
+                    <button
+                      type="button"
+                      onClick={() => setLoginType("ADMIN")}
+                      className={`flex-1 py-2.5 text-xs font-bold tracking-widest uppercase transition-all duration-300 rounded-md z-10 ${
+                        loginType === "ADMIN" ? "text-black shadow-lg" : "text-zinc-500 hover:text-white"
+                      }`}
+                    >
+                      Admin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLoginType("RESELLER")}
+                      className={`flex-1 py-2.5 text-xs font-bold tracking-widest uppercase transition-all duration-300 rounded-md z-10 ${
+                        loginType === "RESELLER" ? "text-black shadow-lg" : "text-zinc-500 hover:text-white"
+                      }`}
+                    >
+                      Reseller
+                    </button>
+                    <div 
+                      className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-md transition-all duration-300 ease-out z-0 ${
+                        loginType === "ADMIN" ? "left-1" : "translate-x-full left-1"
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-zinc-400 mb-2 font-medium">
+                      {loginType === "ADMIN" ? "Email Address" : "Username"}
+                    </label>
+                    <input
+                      type={loginType === "ADMIN" ? "email" : "text"}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={loginType === "ADMIN" ? "sarthakking333@gmail.com" : "Enter your username..."}
+                      className="w-full bg-black border border-zinc-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-white transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-zinc-400 mb-2 font-medium">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-black border border-zinc-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-white transition-all"
+                    />
+                  </div>
+
+                  {loginError && (
+                    <div className="border border-red-500/50 bg-red-950/30 text-red-400 text-xs p-3 rounded-lg">
+                      {loginError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isConnecting}
+                    className="w-full bg-white text-black hover:bg-zinc-200 rounded-lg py-3.5 text-xs font-bold tracking-widest uppercase transition-all flex items-center justify-center shadow-lg"
+                  >
+                    {isConnecting ? "Authenticating..." : "Access Console"}
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
         </div>
       ) : (
-        /* DASHBOARD PAGE */
+
+        /* --- AUTHENTICATED DASHBOARD PAGE --- */
         <div className="flex-1 flex flex-col relative bg-black min-h-screen">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff08_1px,transparent_1px),linear-gradient(to_bottom,#ffffff08_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
 
@@ -697,17 +897,17 @@ export default function Home() {
 
               {/* WHITELIST TAB */}
               {activeTab === "WHITELIST" && (
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-fade-in">
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-fade-in font-mono">
                   <div className="xl:col-span-4 space-y-6">
-                    <div className="bg-zinc-950/60 backdrop-blur-xl border border-zinc-800/60 rounded-2xl p-6 relative">
-                      <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800/50 pb-4">
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 relative">
+                      <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800 pb-4">
                         Provision Registry
                       </div>
 
                       {userRole === "RESELLER" && currentResellerObj && (
-                         <div className="mb-6 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg text-xs flex justify-between items-center">
+                         <div className="mb-6 p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-xs flex justify-between items-center">
                            <span className="text-zinc-400 uppercase tracking-wider text-[10px]">Your Balance</span>
-                           <span className="font-bold text-blue-400">{currentResellerObj.credits} Credits</span>
+                           <span className="font-bold text-white">{currentResellerObj.credits} Credits</span>
                          </div>
                       )}
 
@@ -722,14 +922,14 @@ export default function Home() {
                             value={newUid}
                             onChange={(e) => setNewUid(e.target.value)}
                             placeholder="e.g., 123456789"
-                            className="w-full bg-black/50 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 transition-all"
+                            className="w-full bg-black border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white transition-all"
                           />
                         </div>
 
                         <div>
                           <label className="block text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5 font-medium flex justify-between">
                             <span>Lifespan (Days)</span>
-                            {userRole === "RESELLER" && <span className="text-blue-400">Cost: {newDays} Credits</span>}
+                            {userRole === "RESELLER" && <span className="text-white font-bold">Cost: {newDays} Credits</span>}
                           </label>
                           <input
                             type="number"
@@ -739,7 +939,7 @@ export default function Home() {
                             value={newDays}
                             onChange={(e) => setNewDays(parseInt(e.target.value) || 1)}
                             placeholder="30"
-                            className="w-full bg-black/50 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 transition-all"
+                            className="w-full bg-black border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white transition-all"
                           />
                         </div>
 
@@ -752,33 +952,26 @@ export default function Home() {
                             value={newName}
                             onChange={(e) => setNewName(e.target.value)}
                             placeholder="e.g., Client Alpha"
-                            className="w-full bg-black/50 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 transition-all"
+                            className="w-full bg-black border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white transition-all"
                           />
                         </div>
 
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="w-full relative overflow-hidden group bg-white text-black hover:text-white border border-transparent hover:border-white/20 rounded-lg py-3 text-xs font-bold tracking-widest uppercase transition-all duration-300 flex items-center justify-center mt-4"
+                          className="w-full bg-white text-black hover:bg-zinc-200 rounded-lg py-3 text-xs font-bold tracking-widest uppercase transition-all flex items-center justify-center mt-4"
                         >
-                          <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-zinc-800 to-black opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          <span className="relative z-10 flex items-center space-x-2">
-                            {isSubmitting ? (
-                              <><span className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full" /><span>Provisioning...</span></>
-                            ) : (
-                              <span>Whitelist UID</span>
-                            )}
-                          </span>
+                          {isSubmitting ? "Provisioning..." : "Whitelist UID"}
                         </button>
                       </form>
                     </div>
                   </div>
 
                   <div className="xl:col-span-8">
-                    <div className="bg-zinc-950/60 backdrop-blur-xl border border-zinc-800/60 rounded-2xl p-6 relative flex flex-col h-full min-h-[500px]">
-                      <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800/50 pb-4 flex justify-between items-center">
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 relative flex flex-col h-full min-h-[500px]">
+                      <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800 pb-4 flex justify-between items-center">
                         <span>Database Records</span>
-                        <span className="bg-zinc-900 px-2 py-1 rounded text-white">{filteredUids.length} Active</span>
+                        <span className="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-white">{filteredUids.length} Active</span>
                       </div>
 
                       <div className="relative mb-6">
@@ -787,42 +980,40 @@ export default function Home() {
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           placeholder="Query by UID or Name..."
-                          className="w-full bg-black/50 border border-zinc-800 rounded-lg pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-zinc-600 transition-colors"
+                          className="w-full bg-black border border-zinc-800 rounded-lg pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-zinc-600 transition-colors"
                         />
                         <svg className="w-4 h-4 absolute left-3.5 top-2.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                       </div>
 
                       <div className="flex-1 overflow-x-auto">
                         {filteredUids.length === 0 ? (
-                          <div className="h-64 flex flex-col items-center justify-center border border-zinc-800/50 border-dashed rounded-xl text-zinc-600">
-                            <svg className="w-8 h-8 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                          <div className="h-64 flex flex-col items-center justify-center border border-zinc-800/80 border-dashed rounded-xl text-zinc-600">
                             <span className="text-xs uppercase tracking-widest">No Database Records Found</span>
                           </div>
                         ) : (
                           <table className="w-full text-left border-collapse">
                             <thead>
-                              <tr className="border-b border-zinc-800/50 text-[10px] text-zinc-500 uppercase tracking-widest">
-                                <th className="pb-3 font-semibold font-sans">Identifier</th>
-                                <th className="pb-3 font-semibold font-sans">UID Value</th>
-                                <th className="pb-3 font-semibold font-sans text-center">Span</th>
-                                {userRole === "ADMIN" && <th className="pb-3 font-semibold font-sans text-center">By</th>}
-                                <th className="pb-3 font-semibold font-sans text-right">Actions</th>
+                              <tr className="border-b border-zinc-800 text-[10px] text-zinc-500 uppercase tracking-widest">
+                                <th className="pb-3 font-semibold">Identifier</th>
+                                <th className="pb-3 font-semibold">UID Value</th>
+                                <th className="pb-3 font-semibold text-center">Span</th>
+                                {userRole === "ADMIN" && <th className="pb-3 font-semibold text-center">By</th>}
+                                <th className="pb-3 font-semibold text-right">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-800/50 text-xs">
                               {filteredUids.map((item) => (
                                 <tr key={item.uid} className="hover:bg-zinc-900/40 group transition-colors">
-                                  <td className="py-4 font-medium text-white truncate max-w-[150px] font-sans">{item.name}</td>
-                                  <td className="py-4 font-mono text-zinc-400 select-all">{item.uid}</td>
-                                  <td className="py-4 text-center text-zinc-300 font-mono">
-                                    <span className="bg-zinc-900 px-2 py-1 rounded-md border border-zinc-800">{item.days}d</span>
+                                  <td className="py-4 font-medium text-white truncate max-w-[150px]">{item.name}</td>
+                                  <td className="py-4 text-zinc-400 select-all">{item.uid}</td>
+                                  <td className="py-4 text-center text-zinc-300">
+                                    <span className="bg-zinc-900 px-2 py-1 rounded border border-zinc-800">{item.days}d</span>
                                   </td>
                                   {userRole === "ADMIN" && (
-                                    <td className="py-4 text-center text-blue-400 font-medium text-[10px] uppercase tracking-wider font-sans">{item.createdBy}</td>
+                                    <td className="py-4 text-center text-white font-medium text-[10px] uppercase tracking-wider">{item.createdBy}</td>
                                   )}
                                   <td className="py-4 text-right">
                                     <div className="flex items-center justify-end space-x-2">
-                                      {/* Extend Button */}
                                       <button
                                         onClick={() => {
                                           const daysStr = prompt("Enter additional days to extend:", "30");
@@ -833,18 +1024,15 @@ export default function Home() {
                                             }
                                           }
                                         }}
-                                        className="bg-zinc-900 hover:bg-white text-zinc-300 hover:text-black border border-zinc-700 hover:border-white rounded px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider transition-all duration-200"
-                                        title="Extend Lifespan"
+                                        className="bg-zinc-900 hover:bg-white text-zinc-300 hover:text-black border border-zinc-700 hover:border-white rounded px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider transition-all"
                                       >
                                         + Extend
                                       </button>
 
-                                      {/* Delete / Revoke Button */}
                                       <button
                                         onClick={() => handleRemoveUid(item.uid)}
                                         disabled={deletingUid === item.uid}
-                                        className="bg-red-950/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-900/50 hover:border-red-600 rounded px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider transition-all duration-200"
-                                        title="Delete / Revoke UID"
+                                        className="bg-red-950/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-900/50 hover:border-red-600 rounded px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider transition-all"
                                       >
                                         {deletingUid === item.uid ? "Deleting..." : "Delete"}
                                       </button>
@@ -863,25 +1051,25 @@ export default function Home() {
 
               {/* RESELLERS TAB (ADMIN ONLY) */}
               {activeTab === "RESELLERS" && userRole === "ADMIN" && (
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-fade-in">
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-fade-in font-mono">
                   <div className="xl:col-span-4 space-y-6">
-                    <div className="bg-zinc-950/60 backdrop-blur-xl border border-zinc-800/60 rounded-2xl p-6 relative">
-                      <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800/50 pb-4">
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 relative">
+                      <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800 pb-4">
                         Create Reseller
                       </div>
 
                       <form onSubmit={handleAddReseller} className="space-y-5">
                         <div>
                           <label className="block text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5 font-medium">Username</label>
-                          <input type="text" required value={newResellerUsername} onChange={(e) => setNewResellerUsername(e.target.value)} placeholder="reseller_one" className="w-full bg-black/50 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50" />
+                          <input type="text" required value={newResellerUsername} onChange={(e) => setNewResellerUsername(e.target.value)} placeholder="reseller_one" className="w-full bg-black border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white transition-all" />
                         </div>
                         <div>
                           <label className="block text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5 font-medium">Password</label>
-                          <input type="text" required value={newResellerPassword} onChange={(e) => setNewResellerPassword(e.target.value)} placeholder="secure_pass" className="w-full bg-black/50 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50" />
+                          <input type="text" required value={newResellerPassword} onChange={(e) => setNewResellerPassword(e.target.value)} placeholder="secure_pass" className="w-full bg-black border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white transition-all" />
                         </div>
                         <div>
                           <label className="block text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5 font-medium">Initial Credits</label>
-                          <input type="number" required min={0} value={newResellerCredits} onChange={(e) => setNewResellerCredits(parseInt(e.target.value) || 0)} placeholder="100" className="w-full bg-black/50 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50" />
+                          <input type="number" required min={0} value={newResellerCredits} onChange={(e) => setNewResellerCredits(parseInt(e.target.value) || 0)} placeholder="100" className="w-full bg-black border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white transition-all" />
                         </div>
                         <button type="submit" className="w-full bg-white text-black hover:bg-zinc-200 rounded-lg py-3 text-xs font-bold tracking-widest uppercase transition-all mt-4">
                           Create Reseller
@@ -891,14 +1079,14 @@ export default function Home() {
                   </div>
 
                   <div className="xl:col-span-8">
-                    <div className="bg-zinc-950/60 backdrop-blur-xl border border-zinc-800/60 rounded-2xl p-6 relative flex flex-col h-full min-h-[500px]">
-                      <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800/50 pb-4">
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 relative flex flex-col h-full min-h-[500px]">
+                      <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800 pb-4">
                         Reseller Database
                       </div>
                       <div className="flex-1 overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="border-b border-zinc-800 text-[10px] text-zinc-500 uppercase tracking-widest font-mono">
+                            <tr className="border-b border-zinc-800 text-[10px] text-zinc-500 uppercase tracking-widest">
                               <th className="pb-3 font-semibold">User</th>
                               <th className="pb-3 font-semibold text-center">Password</th>
                               <th className="pb-3 font-semibold text-center">Credits</th>
@@ -907,12 +1095,12 @@ export default function Home() {
                               <th className="pb-3 font-semibold text-right">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-zinc-800/50 text-xs font-mono">
+                          <tbody className="divide-y divide-zinc-800/50 text-xs">
                             {resellers.map((r) => (
                               <tr key={r.username} className="hover:bg-zinc-900/40 group transition-colors">
                                 <td className="py-4 font-bold text-white">{r.username}</td>
                                 <td className="py-4 text-center">
-                                  <span className="text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-[11px] font-mono select-all">
+                                  <span className="text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-[11px] select-all">
                                     {r.password || "••••••••"}
                                   </span>
                                 </td>
@@ -923,7 +1111,6 @@ export default function Home() {
                                 <td className="py-4 text-center text-zinc-500">{r.createdAt}</td>
                                 <td className="py-4 text-right">
                                   <div className="flex items-center justify-end space-x-2">
-                                    {/* Add Credits Button */}
                                     <button
                                       onClick={() => {
                                         const amountStr = prompt(`Add credits for ${r.username}:`, "50");
@@ -934,17 +1121,14 @@ export default function Home() {
                                           }
                                         }
                                       }}
-                                      className="bg-zinc-900 hover:bg-white text-zinc-300 hover:text-black border border-zinc-700 hover:border-white rounded px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider transition-all duration-200"
-                                      title="Add Credits"
+                                      className="bg-zinc-900 hover:bg-white text-zinc-300 hover:text-black border border-zinc-700 hover:border-white rounded px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider transition-all"
                                     >
                                       + Add Credits
                                     </button>
 
-                                    {/* Delete Reseller Button */}
                                     <button
                                       onClick={() => handleDeleteReseller(r.username)}
-                                      className="bg-red-950/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-900/50 hover:border-red-600 rounded px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider transition-all duration-200"
-                                      title="Delete Reseller"
+                                      className="bg-red-950/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-900/50 hover:border-red-600 rounded px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider transition-all"
                                     >
                                       Delete
                                     </button>
@@ -965,8 +1149,8 @@ export default function Home() {
 
               {/* LOGS TAB */}
               {activeTab === "LOGS" && (
-                <div className="bg-zinc-950/60 backdrop-blur-xl border border-zinc-800/60 rounded-2xl p-6 relative min-h-[600px] animate-fade-in">
-                  <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800/50 pb-4">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 relative min-h-[600px] animate-fade-in font-mono">
+                  <div className="text-[10px] tracking-widest uppercase text-zinc-400 mb-6 border-b border-zinc-800 pb-4">
                     Audit Trail & Console
                   </div>
                   <div className="space-y-1">
@@ -975,9 +1159,8 @@ export default function Home() {
                         <div className="w-32 text-[10px] text-zinc-500 shrink-0">{log.timestamp}</div>
                         <div className="w-32 shrink-0">
                           <span className={`text-[9px] uppercase tracking-wider px-2 py-1 rounded border ${
-                            log.action.includes("ADD") ? "bg-emerald-950/30 border-emerald-900/50 text-emerald-400" :
+                            log.action.includes("ADD") ? "bg-zinc-900 border-zinc-700 text-white" :
                             log.action.includes("REMOVE") ? "bg-red-950/30 border-red-900/50 text-red-400" :
-                            log.action.includes("LOGIN") ? "bg-blue-950/30 border-blue-900/50 text-blue-400" :
                             "bg-zinc-900 border-zinc-800 text-zinc-400"
                           }`}>{log.action}</span>
                         </div>
