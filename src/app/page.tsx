@@ -422,19 +422,32 @@ export default function Home() {
       )}
 
       {!isAuthenticated ? (
-        <div className="flex-1 flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-black to-black">
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
-
-          <div className="w-full max-w-md bg-black/60 backdrop-blur-xl border border-zinc-800/60 p-8 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] relative z-10">
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-extrabold tracking-widest text-white uppercase mb-2">
-                UID BYPASS ACCES PORATAL
+        <div className="flex-1 flex flex-col relative overflow-hidden bg-black min-h-screen">
+          {/* Top Navbar Header */}
+          <header className="w-full border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md px-8 py-4 flex items-center justify-between z-20 font-mono">
+            <div>
+              <h1 className="text-base font-bold tracking-widest text-white uppercase">
+                UID BYPASS ACCES PORTAL
               </h1>
-              <p className="text-zinc-500 text-xs tracking-wider uppercase">
-                Secure User ID Verification Console
-              </p>
             </div>
+            <div className="flex items-center space-x-2 text-[10px] tracking-widest text-zinc-500 uppercase">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>SYSTEM ONLINE</span>
+            </div>
+          </header>
+
+          <div className="flex-1 flex flex-col justify-center items-center px-4 py-12 relative">
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
+
+            <div className="w-full max-w-md bg-black/80 backdrop-blur-xl border border-zinc-800 p-8 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.8)] relative z-10 font-mono">
+              <div className="text-center mb-8">
+                <h2 className="text-xl font-extrabold tracking-widest text-white uppercase mb-1">
+                  PORTAL ACCESS
+                </h2>
+                <p className="text-zinc-500 text-[10px] tracking-widest uppercase">
+                  Secure User Verification Terminal
+                </p>
+              </div>
 
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="flex bg-zinc-900/50 p-1 rounded-lg backdrop-blur-sm border border-zinc-800/50 relative">
@@ -530,6 +543,7 @@ export default function Home() {
               </button>
             </form>
           </div>
+        </div>
         </div>
       ) : (
         /* DASHBOARD PAGE */
