@@ -338,7 +338,7 @@ export default function Home() {
       try {
         const res = await makeApiCall("/uids/list", "GET");
         if (res.ok && Array.isArray(res.data)) {
-          const remoteList: UIDItem[] = res.data.map((item: { identifier?: string; uid?: string; name?: string; expiresAt?: string; days?: number; createdAt?: string }) => {
+          const remoteList: UIDItem[] = res.data.map((item: { identifier?: string; uid?: string; name?: string; expiresAt?: string; days?: number; createdAt?: string; creator?: string }) => {
             let daysLeft = 30;
             if (item.expiresAt) {
               const diffMs = new Date(item.expiresAt).getTime() - new Date().getTime();
@@ -2239,7 +2239,7 @@ console.log(data);`}
                                       </span>
                                       <button
                                         onClick={() => {
-                                          navigator.clipboard.writeText(r.password);
+                                          navigator.clipboard.writeText(r.password || "");
                                           showToast(`Copied password for ${r.username}!`, "success");
                                         }}
                                         title="Copy Password"
