@@ -23,10 +23,11 @@ export async function POST(req: NextRequest) {
     const data = await response.json().catch(() => ({}));
 
     return NextResponse.json(data, { status: response.status });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Proxy error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to communicate with external API";
     return NextResponse.json(
-      { error: error.message || "Failed to communicate with external API" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
