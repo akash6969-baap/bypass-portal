@@ -103,6 +103,8 @@ export default function Home() {
   const [clientApiKeys, setClientApiKeys] = useState<ClientApiKeyItem[]>([]);
   const [newClientName, setNewClientName] = useState("");
   const [newClientCredits, setNewClientCredits] = useState(500);
+  const [extendModalKey, setExtendModalKey] = useState<ClientApiKeyItem | null>(null);
+  const [extendCreditsInput, setExtendCreditsInput] = useState<number>(500);
 
   // Free Portal Admin Controls & Discord State
   const [freePortalEnabled, setFreePortalEnabled] = useState(true);
@@ -213,27 +215,60 @@ export default function Home() {
     };
 
     const updated = [newRecord, ...clientApiKeys];
-    setClientApiKeys(updated);
-    localStorage.setItem("mono_client_api_keys", JSON.stringify(updated));
+    saveClientKeysWithServer(updated);
     addLog("API_KEY_CREATE", `Generated API Key for ${newClientName.trim()} with ${newClientCredits} credits.`, currentUser);
     showToast(`Generated API Key for ${newClientName.trim()}!`, "success");
     setNewClientName("");
     setNewClientCredits(500);
   };
 
+  const saveClientKeysWithServer = (list: ClientApiKeyItem[]) => {
+    setClientApiKeys(list);
+    localStorage.setItem("mono_client_api_keys", JSON.stringify(list));
+    try {
+      fetch("/api/v1/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "SYNC", keys: list })
+      });
+    } catch (e) {
+      console.error("Failed to sync keys to server:", e);
+    }
+  };
+
   const handleRevokeClientKey = (keyId: string) => {
     const updated = clientApiKeys.map(k => k.id === keyId ? { ...k, status: k.status === "ACTIVE" ? ("REVOKED" as const) : ("ACTIVE" as const) } : k);
-    setClientApiKeys(updated);
-    localStorage.setItem("mono_client_api_keys", JSON.stringify(updated));
+    saveClientKeysWithServer(updated);
     showToast("API Key status updated.", "info");
   };
 
   const handleDeleteClientKey = (keyId: string) => {
     if (!confirm("Are you sure you want to delete this API Key?")) return;
     const updated = clientApiKeys.filter(k => k.id !== keyId);
-    setClientApiKeys(updated);
-    localStorage.setItem("mono_client_api_keys", JSON.stringify(updated));
+    saveClientKeysWithServer(updated);
     showToast("API Key deleted.", "success");
+  };
+
+  const handleExtendClientKeySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extendModalKey || !extendCreditsInput || extendCreditsInput <= 0) return;
+
+    const keyId = extendModalKey.id;
+    const amount = extendCreditsInput;
+
+    const updated = clientApiKeys.map(k => {
+      if (k.id === keyId) {
+        const newCredits = (k.credits || 0) + amount;
+        addLog("API_KEY_EXTEND", `Extended +${amount} credits for API key ${k.clientName} (New Total: ${newCredits} CR).`, currentUser);
+        return { ...k, credits: newCredits };
+      }
+      return k;
+    });
+
+    saveClientKeysWithServer(updated);
+    showToast(`Added +${amount} credits to ${extendModalKey.clientName}!`, "success");
+    setExtendModalKey(null);
+    setExtendCreditsInput(500);
   };
 
   // Free Portal Check Handler (Real-Time Live Server Verification)
@@ -363,7 +398,22 @@ export default function Home() {
       }
     };
 
+    // Fetch Server API Keys
+    const fetchServerKeys = async () => {
+      try {
+        const response = await fetch("/api/v1/keys");
+        const resData = await response.json();
+        if (resData.success && Array.isArray(resData.data) && resData.data.length > 0) {
+          setClientApiKeys(resData.data);
+          localStorage.setItem("mono_client_api_keys", JSON.stringify(resData.data));
+        }
+      } catch (err) {
+        console.log("Server keys fetch fallback:", err);
+      }
+    };
+
     fetchManiUids();
+    fetchServerKeys();
   }, []);
 
   // Save changes to localStorage wrappers
@@ -2680,6 +2730,20 @@ console.log(data);`}
                                   <td className="py-4 text-right">
                                     <div className="flex items-center justify-end space-x-2">
                                       <button
+                                        onClick={() => {
+                                          setExtendModalKey(item);
+                                          setExtendCreditsInput(500);
+                                        }}
+                                        className="bg-emerald-950/40 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-800/60 hover:border-emerald-500 rounded-lg px-2.5 py-1.5 text-[10px] uppercase font-bold transition-all flex items-center space-x-1"
+                                        title="Extend API Key Credits"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                        </svg>
+                                        <span>+ Extend</span>
+                                      </button>
+
+                                      <button
                                         onClick={() => handleRevokeClientKey(item.id)}
                                         className="bg-zinc-900 hover:bg-white text-zinc-300 hover:text-black border border-zinc-800 hover:border-white rounded-lg px-2.5 py-1.5 text-[10px] uppercase font-bold transition-all"
                                       >
@@ -3347,6 +3411,97 @@ console.log(data);`}
 
             </div>
           </main>
+        </div>
+      )}
+
+      {/* EXTEND CLIENT API KEY CREDITS MODAL */}
+      {extendModalKey && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
+              <div className="flex items-center space-x-2">
+                <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+                <h3 className="text-sm font-mono uppercase tracking-wider font-bold text-white">
+                  ⚡ Extend API Key Credits
+                </h3>
+              </div>
+              <button
+                onClick={() => setExtendModalKey(null)}
+                className="text-zinc-500 hover:text-white p-1 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-2 font-mono text-xs">
+              <div className="flex justify-between text-zinc-400">
+                <span>Client / Website:</span>
+                <span className="text-white font-bold">{extendModalKey.clientName}</span>
+              </div>
+              <div className="flex justify-between text-zinc-400">
+                <span>Current Credits:</span>
+                <span className="text-emerald-400 font-bold">{extendModalKey.credits} CR</span>
+              </div>
+              <div className="flex justify-between text-zinc-400">
+                <span>API Key:</span>
+                <span className="text-zinc-300 font-mono text-[10px]">{extendModalKey.key.slice(0, 14)}...</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleExtendClientKeySubmit} className="space-y-4 font-mono">
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-zinc-400 mb-2 font-bold">
+                  Add Additional Credits
+                </label>
+
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {[100, 500, 1000, 5000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setExtendCreditsInput(preset)}
+                      className={`py-2 rounded-xl text-[10px] font-mono font-bold uppercase transition-all ${
+                        extendCreditsInput === preset
+                          ? "bg-emerald-500 text-black font-black shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                          : "bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white hover:bg-zinc-800"
+                      }`}
+                    >
+                      +{preset} CR
+                    </button>
+                  ))}
+                </div>
+
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  value={extendCreditsInput}
+                  onChange={(e) => setExtendCreditsInput(parseInt(e.target.value) || 0)}
+                  placeholder="Enter credit amount e.g. 500"
+                  className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 transition-all font-mono"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setExtendModalKey(null)}
+                  className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl py-3 text-xs font-bold uppercase tracking-wider transition-all"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl py-3 text-xs font-black uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                >
+                  Confirm +{extendCreditsInput} CR
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

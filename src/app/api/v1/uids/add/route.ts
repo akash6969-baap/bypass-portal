@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validateAndDeductCredit } from "@/lib/apiKeysStore";
 
 export async function POST(req: NextRequest) {
   try {
@@ -6,6 +7,15 @@ export async function POST(req: NextRequest) {
     
     if (!authHeader) {
       return NextResponse.json({ success: false, error: "Missing X-AUTH-KEY header" }, { status: 401 });
+    }
+
+    // Validate API Key and deduct 1 Credit
+    const creditCheck = validateAndDeductCredit(authHeader, 1);
+    if (!creditCheck.success) {
+      return NextResponse.json({ 
+        success: false, 
+        error: creditCheck.error || "Authentication failed or insufficient credits" 
+      }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -16,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     const durationDays = parseInt(days) || 30;
-    const clientName = name || "API_User";
+    const clientName = name || creditCheck.clientName || "API_User";
 
     // Forward request to underlying Mani API Gateway
     const response = await fetch("https://mani272uidbypass.vercel.app/api/v1/uids/add", {
@@ -37,6 +47,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `UID ${uid} provisioned successfully for ${durationDays} days.`,
+      credits_remaining: creditCheck.remainingCredits,
       data: responseData
     }, { status: 200 });
 
