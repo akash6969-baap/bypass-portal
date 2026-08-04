@@ -22,68 +22,16 @@ export default function FreePortalPublicPage() {
   const [portalEnabled, setPortalEnabled] = useState(true);
   const [portalDurationDays, setPortalDurationDays] = useState(1);
 
-  // UID Management Database State
-  const [allUids, setAllUids] = useState<UIDCheckItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isLoadingList, setIsLoadingList] = useState(false);
-  const [actionLoadingUid, setActionLoadingUid] = useState<string | null>(null);
+  // Verification Checker State
+  const [checkUidInput, setCheckUidInput] = useState("");
+  const [checkResult, setCheckResult] = useState<{ searched: boolean; item: UIDCheckItem | null } | null>(null);
 
   const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Fetch Database UIDs from local memory and live Mani API
-  const fetchDatabaseUids = async () => {
-    setIsLoadingList(true);
-    let merged: UIDCheckItem[] = [];
-
-    // 1. Get from local shared memory
-    try {
-      const local = JSON.parse(localStorage.getItem("mono_local_uids") || "[]");
-      merged = local.map((item: { uid?: string; identifier?: string; days?: number | string; name?: string; createdAt?: string }) => ({
-        uid: String(item.uid || item.identifier),
-        days: typeof item.days === "number" ? item.days : (parseInt(String(item.days), 10) || 1),
-        name: item.name || "Client",
-        createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString() : new Date().toLocaleDateString()
-      }));
-    } catch (e) {}
-
-    // 2. Fetch live Mani API backend database
-    try {
-      const res = await fetch("/api/uid-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: "https://mani272uidbypass.vercel.app/api/v1/uids/list",
-          method: "GET"
-        })
-      });
-
-      const data = await res.json();
-      const listData = Array.isArray(data) ? data : (data.data || data.uids || []);
-      if (res.ok && Array.isArray(listData)) {
-        listData.forEach((remote: { identifier?: string; uid?: string; days?: number | string; name?: string; createdAt?: string }) => {
-          const uidStr = String(remote.identifier || remote.uid);
-          if (uidStr && !merged.some(m => m.uid === uidStr)) {
-            merged.push({
-              uid: uidStr,
-              days: typeof remote.days === "number" ? remote.days : (parseInt(String(remote.days), 10) || 1),
-              name: remote.name || `Node_${uidStr.substring(0, 6)}`,
-              createdAt: remote.createdAt ? new Date(remote.createdAt).toLocaleDateString() : new Date().toLocaleDateString()
-            });
-          }
-        });
-      }
-    } catch (err) {
-      console.error("Fetch list error:", err);
-    }
-
-    setAllUids(merged);
-    setIsLoadingList(false);
-  };
-
-  // Sync Admin Settings, Discord OAuth & Database on Mount
+  // Sync Admin Settings & Discord OAuth state on Mount
   useEffect(() => {
     setIsMounted(true);
 
@@ -109,7 +57,6 @@ export default function FreePortalPublicPage() {
     };
 
     syncAdminSettings();
-    fetchDatabaseUids();
     window.addEventListener("focus", syncAdminSettings);
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -142,6 +89,21 @@ export default function FreePortalPublicPage() {
     if (!gameUidInput.trim()) {
       showToast("Please enter a valid Game UID.", "error");
       return;
+    }
+
+    // Check if this Discord user has already claimed in the last 24 hours
+    if (discordUser) {
+      const lastClaimKey = `free_claim_${discordUser.id}`;
+      const lastClaimTime = localStorage.getItem(lastClaimKey);
+      if (lastClaimTime) {
+        const elapsedMs = Date.now() - parseInt(lastClaimTime, 10);
+        const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+        if (elapsedMs < twentyFourHoursMs) {
+          const hoursLeft = Math.ceil((twentyFourHoursMs - elapsedMs) / (1000 * 60 * 60));
+          showToast(`🚫 Limit Reached! Discord user ${discordUser.name} has already claimed a Free Whitelist today. Try again in ${hoursLeft} hour(s).`, "error");
+          return;
+        }
+      }
     }
 
     setIsSubmitting(true);
@@ -203,89 +165,92 @@ export default function FreePortalPublicPage() {
       console.error("Local sync error:", e);
     }
 
-    // 3. Update state immediately
+    // Save claim timestamp for 24-hour rate limiting per Discord ID
+    if (discordUser) {
+      localStorage.setItem(`free_claim_${discordUser.id}`, Date.now().toString());
+    }
+
+    // 3. Update Verification Checker & UI State immediately
     showToast(
       backendSuccess 
-        ? `🎉 UID ${targetUid} FREE Whitelisted for ${portalDurationDays === 1 ? '24 Hours' : `${portalDurationDays} Days`}!` 
-        : `⚡ UID ${targetUid} Provisioned & Whitelisted! ${backendMessage ? `(${backendMessage})` : ''}`,
+        ? `UID ${targetUid} Whitelisted for ${portalDurationDays === 1 ? '24 Hours' : `${portalDurationDays} Days`}.` 
+        : `UID ${targetUid} Whitelisted. ${backendMessage ? `(${backendMessage})` : ''}`,
       "success"
     );
 
+    setCheckUidInput(targetUid);
+    setCheckResult({
+      searched: true,
+      item: newRecord
+    });
     setGameUidInput("");
     setIsSubmitting(false);
-    fetchDatabaseUids();
   };
 
-  // Extend UID Validity Handler (+1 or +7 Days)
-  const handleExtendUid = async (targetUid: string, addDays: number = 1) => {
-    setActionLoadingUid(targetUid);
-    try {
-      const targetItem = allUids.find(u => u.uid === targetUid);
-      const newDays = (targetItem ? targetItem.days : 1) + addDays;
-      const clientName = targetItem ? targetItem.name : "Client";
+  // Live UID Status Checker Handler (Checks Local Shared Memory + Live Mani API)
+  const handleCheckUid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = checkUidInput.trim();
+    if (!query) return;
 
-      await fetch("/api/uid-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: "https://mani272uidbypass.vercel.app/api/v1/uids/add",
-          method: "POST",
-          body: {
-            uid: targetUid,
-            days: newDays,
-            name: clientName
+    // 1. First check shared local memory (mono_local_uids)
+    try {
+      const localUids = JSON.parse(localStorage.getItem("mono_local_uids") || "[]");
+      const localMatch = localUids.find((item: { uid?: string; identifier?: string; name?: string; days?: number; createdAt?: string }) => 
+        String(item.uid || item.identifier || "").trim() === query
+      );
+
+      if (localMatch) {
+        setCheckResult({
+          searched: true,
+          item: {
+            uid: String(localMatch.uid || localMatch.identifier),
+            days: parseInt(localMatch.days, 10) || 1,
+            name: localMatch.name || "Client",
+            createdAt: localMatch.createdAt ? new Date(localMatch.createdAt).toLocaleDateString() : new Date().toLocaleDateString()
           }
-        })
-      });
+        });
+        return;
+      }
+    } catch (e) {}
 
-      const updated = allUids.map(item => {
-        if (item.uid === targetUid) {
-          return { ...item, days: newDays };
-        }
-        return item;
-      });
-      setAllUids(updated);
-      localStorage.setItem("mono_local_uids", JSON.stringify(updated));
-      showToast(`⚡ Extended UID ${targetUid} by +${addDays} Day(s)! Total: ${newDays} Days`, "success");
-    } catch (e) {
-      showToast(`Failed to extend UID ${targetUid}`, "error");
-    } finally {
-      setActionLoadingUid(null);
-    }
-  };
-
-  // Delete / Revoke UID Handler
-  const handleDeleteUid = async (targetUid: string) => {
-    if (!confirm(`Are you sure you want to REVOKE and DELETE whitelist for UID ${targetUid}?`)) return;
-
-    setActionLoadingUid(targetUid);
+    // 2. Fetch live Mani API server database
     try {
-      await fetch("/api/uid-proxy", {
+      const res = await fetch("/api/uid-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: "https://mani272uidbypass.vercel.app/api/v1/uids/remove",
-          method: "POST",
-          body: { uid: targetUid }
+          url: "https://mani272uidbypass.vercel.app/api/v1/uids/list",
+          method: "GET"
         })
       });
 
-      const updated = allUids.filter(item => item.uid !== targetUid);
-      setAllUids(updated);
-      localStorage.setItem("mono_local_uids", JSON.stringify(updated));
-      showToast(`🗑️ UID ${targetUid} Revoked and Removed successfully!`, "success");
-    } catch (e) {
-      showToast(`Failed to revoke UID ${targetUid}`, "error");
-    } finally {
-      setActionLoadingUid(null);
-    }
-  };
+      const data = await res.json();
+      const listData = Array.isArray(data) ? data : (data.data || data.uids || []);
+      if (res.ok && Array.isArray(listData)) {
+        const liveMatch = listData.find((item: UIDCheckItem) =>
+          String(item.identifier || item.uid || "").trim() === query
+        );
 
-  // Filter UIDs based on search query
-  const filteredUids = allUids.filter(u =>
-    u.uid.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
-    u.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
-  );
+        if (liveMatch) {
+          setCheckResult({
+            searched: true,
+            item: {
+              uid: String(liveMatch.identifier || liveMatch.uid),
+              days: typeof liveMatch.days === "number" ? liveMatch.days : parseInt(String(liveMatch.days), 10) || 1,
+              name: liveMatch.name || "Client",
+              createdAt: liveMatch.createdAt ? new Date(liveMatch.createdAt).toLocaleDateString() : new Date().toLocaleDateString()
+            }
+          });
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Error verifying UID:", err);
+    }
+
+    setCheckResult({ searched: true, item: null });
+  };
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-white selection:text-black relative overflow-hidden flex flex-col justify-between">
@@ -337,281 +302,220 @@ export default function FreePortalPublicPage() {
           </p>
         </div>
 
-        {/* TOP CARD: DISCORD OAUTH & FREE WHITELIST CLAIM FORM (CENTERED DESIGN) */}
-        <div className="max-w-3xl mx-auto w-full font-mono">
-          <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-7 shadow-2xl space-y-6">
-            
-            {/* ADMIN PAUSED BANNER NOTICE */}
-            {!portalEnabled && (
-              <div className="bg-red-950/40 border border-red-900/80 p-4 rounded-xl text-center space-y-1.5 font-mono animate-fade-in">
-                <div className="text-xs uppercase text-red-400 font-bold tracking-widest flex items-center justify-center space-x-2">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                  <span>FREE WHITELISTING PAUSED BY ADMIN</span>
-                </div>
-                <p className="text-[11px] text-zinc-400 font-sans">
-                  Free Whitelist allocation is currently paused by administrator. Please check back later.
-                </p>
-              </div>
-            )}
-
-            {/* STEP 1: DISCORD AUTHENTICATION */}
-            <div className="border-b border-zinc-800/80 pb-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold flex items-center space-x-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                  <span>STEP 01 // DISCORD AUTHENTICATION</span>
-                </div>
-                <span className="text-[9px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2.5 py-0.5 rounded-full font-bold">
-                  REQUIRED
-                </span>
-              </div>
-
-              {!isMounted ? (
-                <div className="bg-black/90 border border-zinc-800 p-5 rounded-xl text-center space-y-4">
-                  <div className="h-4 bg-zinc-900 rounded animate-pulse w-3/4 mx-auto" />
-                  <div className="h-10 bg-zinc-900 rounded-xl animate-pulse w-full" />
-                </div>
-              ) : !discordUser ? (
-                <div className="bg-black/90 border border-zinc-800 p-5 rounded-xl text-center space-y-4">
-                  <p className="text-xs text-zinc-400 font-sans leading-relaxed">
-                    Connect your Discord account to claim your daily <span className="text-white font-bold">Free Whitelist</span> quota.
-                  </p>
-                  <a
-                    href="/api/auth/discord"
-                    className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white py-3.5 rounded-xl text-xs font-black tracking-widest uppercase transition-all flex items-center justify-center space-x-2 shadow-[0_0_20px_rgba(88,101,242,0.3)]"
-                  >
-                    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                      <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                    </svg>
-                    <span>LOGIN WITH DISCORD</span>
-                  </a>
-                </div>
-              ) : (
-                <div className="bg-black/90 border border-zinc-800 p-4 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <img
-                      src={discordUser.avatar}
-                      alt="Discord Avatar"
-                      className="w-10 h-10 rounded-full border border-zinc-700"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "https://cdn.discordapp.com/embed/avatars/0.png";
-                      }}
-                    />
-                    <div>
-                      <div className="text-xs font-bold text-white flex items-center space-x-2">
-                        <span>{discordUser.name}</span>
-                        <span className="text-[9px] bg-zinc-900 text-zinc-300 border border-zinc-800 px-2 py-0.5 rounded-full font-bold">
-                          VERIFIED
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-zinc-400 font-bold mt-0.5">
-                        ✓ Discord Authenticated • 1 Free Quota Ready
-                      </div>
+        {/* WORKSPACE DUAL CARDS (100% PURE MONOCHROME BLACK & WHITE THEME) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 font-mono">
+          
+          {/* CARD 1: DISCORD OAUTH & FREE WHITELIST CLAIM FORM */}
+          <div className="lg:col-span-6">
+            <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-7 shadow-2xl space-y-6 h-full flex flex-col justify-between">
+              
+              <div className="space-y-6">
+                
+                {/* ADMIN PAUSED BANNER NOTICE */}
+                {!portalEnabled && (
+                  <div className="bg-red-950/40 border border-red-900/80 p-4 rounded-xl text-center space-y-1.5 font-mono animate-fade-in">
+                    <div className="text-xs uppercase text-red-400 font-bold tracking-widest flex items-center justify-center space-x-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                      <span>FREE WHITELISTING PAUSED BY ADMIN</span>
                     </div>
+                    <p className="text-[11px] text-zinc-400 font-sans">
+                      Free Whitelist allocation is currently paused by administrator. Please check back later.
+                    </p>
+                  </div>
+                )}
+
+                {/* STEP 1: DISCORD AUTHENTICATION */}
+                <div className="border-b border-zinc-800/80 pb-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold flex items-center space-x-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                      <span>STEP 01 // DISCORD AUTHENTICATION</span>
+                    </div>
+                    <span className="text-[9px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2.5 py-0.5 rounded-full font-bold">
+                      REQUIRED
+                    </span>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setDiscordUser(null);
-                      localStorage.removeItem("free_portal_discord_user");
-                      showToast("Logged out from Discord.", "info");
-                    }}
-                    className="bg-black hover:bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all"
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* STEP 2: ENTER GAME UID */}
-            <form onSubmit={handleClaimFreeWhitelist} className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold flex items-center space-x-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                  <span>STEP 02 // PROVISION WHITELIST</span>
-                </div>
-                <span className="text-[9px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2.5 py-0.5 rounded-full font-bold">
-                  {portalDurationDays === 1 ? "24h DURATION" : `${portalDurationDays} DAYS DURATION`}
-                </span>
-              </div>
-
-              <div>
-                <input
-                  type="text"
-                  required
-                  disabled={!portalEnabled}
-                  value={gameUidInput}
-                  onChange={(e) => setGameUidInput(e.target.value)}
-                  placeholder={portalEnabled ? "Enter Gaming UID (e.g. 123456789)..." : "Free portal is currently paused..."}
-                  className="w-full bg-black/90 border border-zinc-800 rounded-xl px-4 py-3.5 text-xs text-white focus:outline-none focus:border-white transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </div>
-
-              {portalEnabled ? (
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full bg-white text-black hover:bg-zinc-200 py-3.5 rounded-xl text-xs font-black tracking-widest uppercase transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <span>{isSubmitting ? "Provisioning..." : `⚡ PROVISION FREE ${portalDurationDays === 1 ? "24H" : `${portalDurationDays}D`} WHITELIST`}</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="w-full bg-zinc-900 border border-zinc-800 text-zinc-500 py-3.5 rounded-xl text-xs font-black tracking-widest uppercase cursor-not-allowed flex items-center justify-center space-x-2"
-                >
-                  <span>🔒 WHITELISTING PAUSED BY ADMIN</span>
-                </button>
-              )}
-            </form>
-          </div>
-        </div>
-
-        {/* BRAND NEW SECTION: UID MANAGEMENT CONTROL CENTER */}
-        <div className="max-w-7xl mx-auto w-full pt-8 font-mono space-y-6">
-          <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-7 shadow-2xl space-y-6">
-            
-            {/* HEADER & SEARCH BAR */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/80 pb-6">
-              <div>
-                <div className="flex items-center space-x-2">
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                  <h2 className="text-xl font-black text-white uppercase tracking-wider font-sans">
-                    UID Management Control Center
-                  </h2>
-                </div>
-                <p className="text-xs text-zinc-500 font-sans mt-1">
-                  View total whitelisted UIDs in real-time, search records, extend validity, or delete/revoke access.
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-3">
-                <div className="bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-300 flex items-center space-x-2 shrink-0">
-                  <span className="text-[10px] text-zinc-500 uppercase">Total UIDs:</span>
-                  <span className="text-white font-black">{allUids.length}</span>
-                </div>
-                <button
-                  onClick={fetchDatabaseUids}
-                  disabled={isLoadingList}
-                  className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shrink-0"
-                >
-                  <svg className={`w-3.5 h-3.5 ${isLoadingList ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <span>{isLoadingList ? "Syncing..." : "Refresh"}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* SEARCH INPUT BAR */}
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="🔍 Search by Gaming UID or Registered Name..."
-                className="w-full bg-black/90 border border-zinc-800 rounded-xl px-4 py-3.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-white transition-all font-mono"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-zinc-500 hover:text-white"
-                >
-                  ✕ Clear
-                </button>
-              )}
-            </div>
-
-            {/* WHITELISTED UIDS TABLE */}
-            <div className="overflow-x-auto border border-zinc-800/80 rounded-xl">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-zinc-800 bg-zinc-900/50 text-[10px] uppercase tracking-widest text-zinc-400">
-                    <th className="py-3.5 px-4 font-bold">Gaming UID</th>
-                    <th className="py-3.5 px-4 font-bold">Registered Client</th>
-                    <th className="py-3.5 px-4 font-bold">Validity / Days Left</th>
-                    <th className="py-3.5 px-4 font-bold">Status</th>
-                    <th className="py-3.5 px-4 font-bold text-right">Management Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/60 text-xs">
-                  {filteredUids.map((item) => (
-                    <tr key={item.uid} className="hover:bg-zinc-900/40 transition-colors">
-                      
-                      {/* GAMING UID */}
-                      <td className="py-3.5 px-4 font-bold text-white font-mono">
-                        {item.uid}
-                      </td>
-
-                      {/* REGISTERED NAME */}
-                      <td className="py-3.5 px-4 text-zinc-300 font-sans">
-                        {item.name || "Default Client"}
-                      </td>
-
-                      {/* VALIDITY / DAYS LEFT */}
-                      <td className="py-3.5 px-4 font-bold text-emerald-400">
-                        {item.days} Day(s)
-                      </td>
-
-                      {/* STATUS BADGE */}
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center space-x-1.5 bg-emerald-950/40 border border-emerald-800/80 text-emerald-400 text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                          <span>ACTIVE</span>
-                        </span>
-                      </td>
-
-                      {/* MANAGEMENT ACTIONS (EXTEND / DELETE) */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            disabled={actionLoadingUid === item.uid}
-                            onClick={() => handleExtendUid(item.uid, 1)}
-                            className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all flex items-center space-x-1 disabled:opacity-50"
-                          >
-                            <span>+1D Extend</span>
-                          </button>
-
-                          <button
-                            disabled={actionLoadingUid === item.uid}
-                            onClick={() => handleExtendUid(item.uid, 7)}
-                            className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all flex items-center space-x-1 disabled:opacity-50"
-                          >
-                            <span>+7D Extend</span>
-                          </button>
-
-                          <button
-                            disabled={actionLoadingUid === item.uid}
-                            onClick={() => handleDeleteUid(item.uid)}
-                            className="bg-red-950/40 hover:bg-red-900/80 border border-red-800/80 text-red-400 hover:text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all flex items-center space-x-1 disabled:opacity-50"
-                          >
-                            <span>🗑️ Delete</span>
-                          </button>
+                  {!isMounted ? (
+                    <div className="bg-black/90 border border-zinc-800 p-5 rounded-xl text-center space-y-4">
+                      <div className="h-4 bg-zinc-900 rounded animate-pulse w-3/4 mx-auto" />
+                      <div className="h-10 bg-zinc-900 rounded-xl animate-pulse w-full" />
+                    </div>
+                  ) : !discordUser ? (
+                    <div className="bg-black/90 border border-zinc-800 p-5 rounded-xl text-center space-y-4">
+                      <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                        Connect your Discord account to claim your daily <span className="text-white font-bold">Free Whitelist</span> quota.
+                      </p>
+                      <a
+                        href="/api/auth/discord"
+                        className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white py-3.5 rounded-xl text-xs font-black tracking-widest uppercase transition-all flex items-center justify-center space-x-2 shadow-[0_0_20px_rgba(88,101,242,0.3)]"
+                      >
+                        <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                          <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                        </svg>
+                        <span>LOGIN WITH DISCORD</span>
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="bg-black/90 border border-zinc-800 p-4 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <img
+                          src={discordUser.avatar}
+                          alt="Discord Avatar"
+                          className="w-10 h-10 rounded-full border border-zinc-700"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "https://cdn.discordapp.com/embed/avatars/0.png";
+                          }}
+                        />
+                        <div>
+                          <div className="text-xs font-bold text-white flex items-center space-x-2">
+                            <span>{discordUser.name}</span>
+                            <span className="text-[9px] bg-zinc-900 text-zinc-300 border border-zinc-800 px-2 py-0.5 rounded-full font-bold">
+                              VERIFIED
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-zinc-400 font-bold mt-0.5">
+                            ✓ Discord Authenticated • 1 Free Quota Ready
+                          </div>
                         </div>
-                      </td>
+                      </div>
 
-                    </tr>
-                  ))}
-
-                  {filteredUids.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-zinc-600 text-xs font-mono uppercase tracking-widest">
-                        {isLoadingList ? "Syncing Database Records..." : searchQuery ? `No Whitelisted UIDs match "${searchQuery}"` : "No Whitelisted UIDs Found"}
-                      </td>
-                    </tr>
+                      <button
+                        onClick={() => {
+                          setDiscordUser(null);
+                          localStorage.removeItem("free_portal_discord_user");
+                          showToast("Logged out from Discord.", "info");
+                        }}
+                        className="bg-black hover:bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
                   )}
-                </tbody>
-              </table>
+                </div>
+
+                {/* STEP 2: ENTER GAME UID */}
+                <form onSubmit={handleClaimFreeWhitelist} className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold flex items-center space-x-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                      <span>STEP 02 // PROVISION WHITELIST</span>
+                    </div>
+                    <span className="text-[9px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2.5 py-0.5 rounded-full font-bold">
+                      {portalDurationDays === 1 ? "24h DURATION" : `${portalDurationDays} DAYS DURATION`}
+                    </span>
+                  </div>
+
+                  <div>
+                    <input
+                      type="text"
+                      required
+                      disabled={!portalEnabled}
+                      value={gameUidInput}
+                      onChange={(e) => setGameUidInput(e.target.value)}
+                      placeholder={portalEnabled ? "Enter Gaming UID (e.g. 123456789)..." : "Free portal is currently paused..."}
+                      className="w-full bg-black/90 border border-zinc-800 rounded-xl px-4 py-3.5 text-xs text-white focus:outline-none focus:border-white transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
+                  {portalEnabled ? (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full bg-white text-black hover:bg-zinc-200 py-3.5 rounded-xl text-xs font-black tracking-widest uppercase transition-all duration-300 flex items-center justify-center disabled:opacity-50 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                    >
+                      <span>{isSubmitting ? "WHITELISTING..." : `WHITELIST ${portalDurationDays === 1 ? "24H" : `${portalDurationDays} DAYS`}`}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="w-full bg-zinc-900 border border-zinc-800 text-zinc-500 py-3.5 rounded-xl text-xs font-black tracking-widest uppercase cursor-not-allowed flex items-center justify-center space-x-2"
+                    >
+                      <span>🔒 WHITELISTING PAUSED BY ADMIN</span>
+                    </button>
+                  )}
+                </form>
+              </div>
             </div>
-
           </div>
-        </div>
 
+          {/* CARD 2: REAL-TIME STATUS VERIFICATION CHECKER */}
+          <div className="lg:col-span-6">
+            <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl p-7 shadow-2xl space-y-6 h-full flex flex-col justify-between">
+              
+              <div className="space-y-6">
+                <div className="border-b border-zinc-800/80 pb-6 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold flex items-center space-x-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                      <span>REAL-TIME STATUS VERIFICATION</span>
+                    </div>
+                    <span className="text-[9px] bg-zinc-900 text-zinc-400 border border-zinc-800 px-2.5 py-0.5 rounded-full font-bold">
+                      LIVE ENGINE
+                    </span>
+                  </div>
+                  <p className="text-zinc-500 text-xs font-sans">
+                    Query the live database in real-time to verify whitelist status and active validity.
+                  </p>
+                </div>
+
+                <form onSubmit={handleCheckUid} className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    type="text"
+                    required
+                    value={checkUidInput}
+                    onChange={(e) => setCheckUidInput(e.target.value)}
+                    placeholder="Enter Game UID to check..."
+                    className="flex-1 bg-black/90 border border-zinc-800 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-white transition-all font-mono"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-white text-black hover:bg-zinc-200 px-6 py-3 rounded-xl text-xs font-black tracking-widest uppercase transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.2)] shrink-0"
+                  >
+                    VERIFY
+                  </button>
+                </form>
+
+                <div>
+                  {checkResult && checkResult.searched ? (
+                    <div className="animate-fade-in">
+                      {checkResult.item ? (
+                        <div className="bg-zinc-900/60 border border-emerald-800/80 p-5 rounded-2xl text-left space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] uppercase text-emerald-400 font-bold tracking-widest">STATUS: WHITELISTED ACTIVE</span>
+                            <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold px-2.5 py-1 rounded-full uppercase">VERIFIED</span>
+                          </div>
+                          <div className="text-xl font-black text-white">{checkResult.item.uid}</div>
+                          <div className="grid grid-cols-2 gap-4 text-xs pt-3 border-t border-zinc-800 font-mono">
+                            <div>
+                              <span className="text-zinc-500 block text-[10px] uppercase">Registered User</span>
+                              <span className="text-white font-bold">{checkResult.item.name || "Default Client"}</span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block text-[10px] uppercase">Active Validity</span>
+                              <span className="text-emerald-400 font-bold">{checkResult.item.days} Day(s)</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-zinc-900/60 border border-red-900/80 p-5 rounded-2xl text-center space-y-2 font-mono">
+                          <div className="text-xs uppercase text-red-400 font-bold tracking-widest">STATUS: NOT WHITELISTED</div>
+                          <p className="text-xs text-zinc-400 font-sans">UID <span className="text-white font-bold">{checkUidInput}</span> is not whitelisted in the active database.</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="py-12 text-center text-zinc-600 text-xs uppercase tracking-widest font-mono border border-dashed border-zinc-900 rounded-2xl">
+                      Ready for Live Verification
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </main>
 
     </div>

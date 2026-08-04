@@ -37,7 +37,7 @@ interface ClientApiKeyItem {
   createdAt: string;
 }
 
-type TabType = "OVERVIEW" | "WHITELIST" | "RESELLERS" | "API_KEYS" | "FREE_PORTAL" | "LOGS" | "DOCS";
+type TabType = "OVERVIEW" | "WHITELIST" | "UID_MANAGEMENT" | "RESELLERS" | "API_KEYS" | "FREE_PORTAL" | "LOGS" | "DOCS";
 type LandingSection = "HOME" | "PROVIDERS" | "API_ACCESS" | "RESELLER_SYSTEM" | "HOW_IT_WORKS";
 
 function generateRandomId() {
@@ -297,7 +297,7 @@ export default function Home() {
   // Helper: Logger
   const addLog = (action: string, details: string, by: string) => {
     const newLog: LogItem = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateRandomId(),
       action,
       details,
       by,
@@ -1412,7 +1412,21 @@ console.log(data);`}
                       <svg className={`w-4 h-4 shrink-0 ${activeTab === "WHITELIST" ? "text-black" : "text-zinc-400"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                       </svg>
-                      <span>{userRole === "ADMIN" ? "UID Whitelist" : "Whitelist UID"}</span>
+                      <span>{userRole === "ADMIN" ? "Add Whitelist" : "Whitelist UID"}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveTab("UID_MANAGEMENT")}
+                      className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        activeTab === "UID_MANAGEMENT"
+                          ? "bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.25)] font-black"
+                          : "text-zinc-200 hover:text-white hover:bg-zinc-900/80"
+                      }`}
+                    >
+                      <svg className={`w-4 h-4 shrink-0 ${activeTab === "UID_MANAGEMENT" ? "text-black" : "text-zinc-400"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                      </svg>
+                      <span>UID Management</span>
                     </button>
 
                     {userRole === "ADMIN" && (
@@ -2051,6 +2065,165 @@ console.log(data);`}
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* UID MANAGEMENT CONTROL CENTER TAB */}
+              {activeTab === "UID_MANAGEMENT" && (
+                <div className="space-y-6 animate-fade-in font-sans">
+                  
+                  {/* HERO STATS BAR FOR UID MANAGEMENT */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-zinc-950/90 border border-zinc-800/80 p-5 rounded-2xl flex items-center justify-between shadow-lg font-mono">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold">Total Whitelisted UIDs</div>
+                        <div className="text-2xl font-extrabold text-white mt-1">{filteredUids.length} Records</div>
+                      </div>
+                      <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-950/90 border border-zinc-800/80 p-5 rounded-2xl flex items-center justify-between shadow-lg font-mono">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold">Active Engine Nodes</div>
+                        <div className="text-2xl font-extrabold text-emerald-400 mt-1">100% Operational</div>
+                      </div>
+                      <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl">
+                        <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse block" />
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-950/90 border border-zinc-800/80 p-5 rounded-2xl flex items-center justify-between shadow-lg font-mono">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold">Database Proxy Sync</div>
+                        <div className="text-xs font-bold text-zinc-300 mt-1.5">UID Bypass Live Gateway</div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const res = await makeApiCall("/uids/list", "GET");
+                          if (res.ok && Array.isArray(res.data)) {
+                            showToast("Synced with live UID Bypass database!", "success");
+                          }
+                        }}
+                        className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all font-mono"
+                      >
+                        🔄 Sync Now
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* FULL-WIDTH SEARCH BAR & MANAGEMENT CONTROL PANEL */}
+                  <div className="bg-zinc-950/90 border border-zinc-800/80 p-6 rounded-2xl space-y-4 shadow-xl">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4 font-mono">
+                      <div>
+                        <h2 className="text-xl font-black text-white uppercase tracking-wider font-sans">
+                          UID Management Control Center
+                        </h2>
+                        <p className="text-xs text-zinc-400 font-sans mt-1">
+                          Search, inspect, extend validity duration, or delete/revoke any whitelisted gaming UID in real-time.
+                        </p>
+                      </div>
+                      <div className="bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-xl text-xs font-mono font-bold text-zinc-300">
+                        Showing {filteredUids.length} of {uids.length} UIDs
+                      </div>
+                    </div>
+
+                    {/* SEARCH INPUT BAR */}
+                    <div className="relative font-mono">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="🔍 Search by Gaming UID, Registered Name, or Creator..."
+                        className="w-full bg-black/90 border border-zinc-800 rounded-xl px-4 py-3.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-white transition-all"
+                      />
+                      {searchQuery && (
+                        <button
+                          onClick={() => setSearchQuery("")}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-zinc-500 hover:text-white"
+                        >
+                          ✕ Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* UID MANAGEMENT TABLE */}
+                  <div className="bg-zinc-950/90 border border-zinc-800/80 rounded-2xl overflow-hidden shadow-xl font-mono">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-zinc-800 bg-zinc-900/60 text-[10px] uppercase tracking-widest text-zinc-400">
+                            <th className="py-4 px-6 font-bold">Gaming UID</th>
+                            <th className="py-4 px-6 font-bold">Client / Node Name</th>
+                            <th className="py-4 px-6 font-bold">Validity / Days Left</th>
+                            <th className="py-4 px-6 font-bold">Created By</th>
+                            <th className="py-4 px-6 font-bold">Status</th>
+                            <th className="py-4 px-6 font-bold text-right">Management Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/60 text-xs">
+                          {filteredUids.map((item) => (
+                            <tr key={item.uid} className="hover:bg-zinc-900/40 transition-colors">
+                              <td className="py-4 px-6 font-bold text-white font-mono">
+                                {item.uid}
+                              </td>
+                              <td className="py-4 px-6 text-zinc-300 font-sans">
+                                {item.name || "DefaultName"}
+                              </td>
+                              <td className="py-4 px-6 font-bold text-emerald-400">
+                                {item.days} Day(s)
+                              </td>
+                              <td className="py-4 px-6 text-zinc-400">
+                                {item.createdBy || "System"}
+                              </td>
+                              <td className="py-4 px-6">
+                                <span className="inline-flex items-center space-x-1.5 bg-emerald-950/40 border border-emerald-800/80 text-emerald-400 text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                                  <span>ACTIVE</span>
+                                </span>
+                              </td>
+                              <td className="py-4 px-6 text-right">
+                                <div className="flex items-center justify-end space-x-2">
+                                  <button
+                                    onClick={() => handleExtendUid(item.uid, 1)}
+                                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-all"
+                                  >
+                                    +1D Extend
+                                  </button>
+                                  <button
+                                    onClick={() => handleExtendUid(item.uid, 7)}
+                                    className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-all"
+                                  >
+                                    +7D Extend
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveUid(item.uid)}
+                                    disabled={deletingUid === item.uid}
+                                    className="bg-red-950/40 hover:bg-red-900/80 border border-red-800/80 text-red-400 hover:text-white px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-all disabled:opacity-50"
+                                  >
+                                    {deletingUid === item.uid ? "Revoking..." : "🗑️ Delete"}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+
+                          {filteredUids.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="py-16 text-center text-zinc-500 font-mono text-xs uppercase tracking-widest">
+                                {searchQuery ? `No whitelisted UIDs found matching "${searchQuery}"` : "No Whitelisted UIDs Recorded"}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
                 </div>
               )}
 
