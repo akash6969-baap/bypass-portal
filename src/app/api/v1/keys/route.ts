@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getClientApiKeysServer, saveClientApiKeysServer, ClientApiKeyRecord } from "@/lib/apiKeysStore";
+import { getClientApiKeysAsync, saveClientApiKeysAsync } from "@/lib/apiKeysStore";
 
 export async function GET() {
   try {
-    const keys = getClientApiKeysServer();
+    const keys = await getClientApiKeysAsync();
     return NextResponse.json({ success: true, data: keys }, { status: 200 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Failed to fetch keys";
@@ -17,16 +17,16 @@ export async function POST(req: NextRequest) {
     const { action, keys: inputKeys } = body;
 
     if (action === "SYNC" && Array.isArray(inputKeys)) {
-      saveClientApiKeysServer(inputKeys);
-      return NextResponse.json({ success: true, message: "Keys synced successfully", data: inputKeys });
+      await saveClientApiKeysAsync(inputKeys);
+      return NextResponse.json({ success: true, message: "Keys synced successfully to MongoDB Cluster", data: inputKeys });
     }
 
     if (Array.isArray(body)) {
-      saveClientApiKeysServer(body);
-      return NextResponse.json({ success: true, message: "Keys saved", data: body });
+      await saveClientApiKeysAsync(body);
+      return NextResponse.json({ success: true, message: "Keys saved to MongoDB Cluster", data: body });
     }
 
-    const currentKeys = getClientApiKeysServer();
+    const currentKeys = await getClientApiKeysAsync();
     return NextResponse.json({ success: true, data: currentKeys });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Failed to update keys";

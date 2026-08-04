@@ -412,8 +412,23 @@ export default function Home() {
       }
     };
 
+    // Fetch Server Resellers
+    const fetchServerResellers = async () => {
+      try {
+        const response = await fetch("/api/v1/resellers");
+        const resData = await response.json();
+        if (resData.success && Array.isArray(resData.data) && resData.data.length > 0) {
+          setResellers(resData.data);
+          localStorage.setItem("mono_resellers", JSON.stringify(resData.data));
+        }
+      } catch (err) {
+        console.log("Server resellers fetch fallback:", err);
+      }
+    };
+
     fetchManiUids();
     fetchServerKeys();
+    fetchServerResellers();
   }, []);
 
   // Save changes to localStorage wrappers
@@ -424,6 +439,15 @@ export default function Home() {
   const saveResellers = (list: ResellerItem[]) => {
     setResellers(list);
     localStorage.setItem("mono_resellers", JSON.stringify(list));
+    try {
+      fetch("/api/v1/resellers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "SYNC", resellers: list })
+      });
+    } catch (e) {
+      console.error("Failed to sync resellers to server:", e);
+    }
   };
 
   // Login

@@ -19,8 +19,8 @@ export async function POST(req: NextRequest) {
     const parsedDays = parseInt(days);
     const durationDays = (!isNaN(parsedDays) && parsedDays > 0) ? parsedDays : 30;
 
-    // Validate API Key and deduct durationDays Credits (Rule: 1 Day Whitelist = 1 Credit)
-    const creditCheck = validateAndDeductCredit(authHeader, durationDays);
+    // Validate API Key and deduct durationDays Credits asynchronously from MongoDB Cluster (Rule: 1 Day Whitelist = 1 Credit)
+    const creditCheck = await validateAndDeductCredit(authHeader, durationDays);
     if (!creditCheck.success) {
       return NextResponse.json({ 
         success: false, 
