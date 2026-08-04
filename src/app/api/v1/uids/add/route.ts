@@ -9,15 +9,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing X-AUTH-KEY header" }, { status: 401 });
     }
 
-    // Validate API Key and deduct 1 Credit
-    const creditCheck = validateAndDeductCredit(authHeader, 1);
-    if (!creditCheck.success) {
-      return NextResponse.json({ 
-        success: false, 
-        error: creditCheck.error || "Authentication failed or insufficient credits" 
-      }, { status: 403 });
-    }
-
     const body = await req.json().catch(() => ({}));
     const { uid, days, name } = body;
 
@@ -25,7 +16,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing required parameter: uid" }, { status: 400 });
     }
 
-    const durationDays = parseInt(days) || 30;
+    const parsedDays = parseInt(days);
+    const durationDays = (!isNaN(parsedDays) && parsedDays > 0) ? parsedDays : 30;
+
+    // Validate API Key and deduct durationDays Credits (Rule: 1 Day Whitelist = 1 Credit)
+    const creditCheck = validateAndDeductCredit(authHeader, durationDays);
+    if (!creditCheck.success) {
+      return NextResponse.json({ 
+        success: false, 
+        error: creditCheck.error || `Authentication failed or insufficient credits to whitelist for ${durationDays} days.` 
+      }, { status: 403 });
+    }
+
     const clientName = name || creditCheck.clientName || "API_User";
 
     // Forward request to underlying Mani API Gateway
