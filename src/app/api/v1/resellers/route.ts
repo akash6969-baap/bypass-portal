@@ -14,6 +14,7 @@ export async function GET() {
       const r = doc as unknown as IReseller;
       return {
         username: r.username,
+        password: r.password,
         credits: r.credits,
         totalWhitelisted: r.totalWhitelisted,
         createdAt: r.createdAt,
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
           {
             $set: {
               username: item.username.trim(),
+              password: item.password,
               credits: item.credits ?? 100,
               totalWhitelisted: item.totalWhitelisted ?? 0,
               createdAt: item.createdAt || new Date().toLocaleDateString(),
