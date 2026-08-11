@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-AUTH-KEY": "MANI272-3AB5727F69D214062DA3B8468B708D36"
+        "X-AUTH-KEY": "MANI272-4B7D4174A9D8902C2A8A190B06EE6347"
       },
       body: JSON.stringify({
         uid: String(uid).trim(),

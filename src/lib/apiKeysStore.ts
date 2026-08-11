@@ -85,7 +85,7 @@ export async function validateAndDeductCredit(authKey: string, deductAmount: num
   const cleanKey = authKey.trim();
 
   // Allow Master Admin System Key from Environment
-  const masterEnvKey = process.env.MANI_API_KEY || "MANI272-3AB5727F69D214062DA3B8468B708D36";
+  const masterEnvKey = process.env.MANI_API_KEY || "MANI272-4B7D4174A9D8902C2A8A190B06EE6347";
   if (cleanKey === masterEnvKey || cleanKey.startsWith("X-AUTH-MASTER") || cleanKey.startsWith("X-AUTH-ADMIN")) {
     return { success: true, remainingCredits: 999999, clientName: "Master Admin Gateway" };
   }
