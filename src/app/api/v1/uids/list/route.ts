@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const MANI_KEY = (process.env.MANI_API_KEY && process.env.MANI_API_KEY.startsWith("MANI272-1849"))
+  ? process.env.MANI_API_KEY
+  : "MANI272-1849E54F1E89E81F29920EF7AC318AC3";
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("X-AUTH-KEY") || req.headers.get("x-api-key") || req.headers.get("authorization");
@@ -12,16 +16,17 @@ export async function GET(req: NextRequest) {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "X-AUTH-KEY": process.env.MANI_API_KEY || "MANI272-1849E54F1E89E81F29920EF7AC318AC3"
+        "X-AUTH-KEY": MANI_KEY
       }
     });
 
-    const data = await response.json().catch(() => ([]));
+    const resJson = await response.json().catch(() => ({}));
+    const list = Array.isArray(resJson) ? resJson : (Array.isArray(resJson.data) ? resJson.data : []);
 
     return NextResponse.json({
       success: true,
-      total: Array.isArray(data) ? data.length : 0,
-      data
+      total: list.length,
+      data: list
     }, { status: 200 });
 
   } catch (error: unknown) {

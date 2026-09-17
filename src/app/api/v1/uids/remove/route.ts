@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const MANI_KEY = (process.env.MANI_API_KEY && process.env.MANI_API_KEY.startsWith("MANI272-1849"))
+  ? process.env.MANI_API_KEY
+  : "MANI272-1849E54F1E89E81F29920EF7AC318AC3";
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("X-AUTH-KEY") || req.headers.get("x-api-key") || req.headers.get("authorization");
@@ -19,7 +23,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-AUTH-KEY": process.env.MANI_API_KEY || "MANI272-1849E54F1E89E81F29920EF7AC318AC3"
+        "X-AUTH-KEY": MANI_KEY
       },
       body: JSON.stringify({ uid: String(uid).trim() })
     });
