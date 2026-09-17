@@ -30,15 +30,27 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const action = body.action;
     const listToSync = Array.isArray(body) ? body : (body.resellers || (body.username ? [body] : []));
 
-    if (listToSync.length > 0) {
-      const db = await dbConnect();
-      if (!db) {
-        return NextResponse.json({ success: false, error: "Database offline" }, { status: 500 });
-      }
+    const db = await dbConnect();
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database offline" }, { status: 500 });
+    }
+
+    if (action === "DELETE" && body.username) {
+      await Reseller.deleteMany({ username: String(body.username).trim() });
+      return NextResponse.json({ success: true, message: `Reseller ${body.username} permanently deleted from MongoDB Cluster.` });
+    }
+
+    if (action === "SYNC" || Array.isArray(body) || body.resellers || listToSync.length > 0) {
+      const activeUsernames = listToSync.map((item: { username?: string }) => item.username ? item.username.trim() : "").filter(Boolean);
+
+      // Remove deleted resellers from MongoDB cluster
+      await Reseller.deleteMany({ username: { $nin: activeUsernames } });
 
       for (const item of listToSync) {
+        if (!item.username) continue;
         await Reseller.findOneAndUpdate(
           { username: item.username.trim() },
           {
@@ -59,6 +71,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "No resellers provided for sync" }, { status: 400 });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Failed to sync resellers";
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const username = searchParams.get("username");
+    if (!username) {
+      return NextResponse.json({ success: false, error: "Missing username parameter" }, { status: 400 });
+    }
+    const db = await dbConnect();
+    if (!db) {
+      return NextResponse.json({ success: false, error: "Database offline" }, { status: 500 });
+    }
+    await Reseller.deleteMany({ username: username.trim() });
+    return NextResponse.json({ success: true, message: `Reseller ${username} permanently deleted from MongoDB.` });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to delete reseller";
     return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }

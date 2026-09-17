@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Target URL is required" }, { status: 400 });
     }
 
-    const apiKey = process.env.MANI_API_KEY || "MANI272-6B861E35F791CA509E10EF3613FEF32C";
+    const apiKey = process.env.MANI_API_KEY || "MANI272-1849E54F1E89E81F29920EF7AC318AC3";
 
     const response = await fetch(url, {
       method: method || "GET",

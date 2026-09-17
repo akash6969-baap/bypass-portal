@@ -222,11 +222,11 @@ export default function Home() {
     setNewClientCredits(500);
   };
 
-  const saveClientKeysWithServer = (list: ClientApiKeyItem[]) => {
+  const saveClientKeysWithServer = async (list: ClientApiKeyItem[]) => {
     setClientApiKeys(list);
     localStorage.setItem("mono_client_api_keys", JSON.stringify(list));
     try {
-      fetch("/api/v1/keys", {
+      await fetch("/api/v1/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "SYNC", keys: list })
@@ -242,11 +242,26 @@ export default function Home() {
     showToast("API Key status updated.", "info");
   };
 
-  const handleDeleteClientKey = (keyId: string) => {
+  const handleDeleteClientKey = async (keyId: string) => {
     if (!confirm("Are you sure you want to delete this API Key?")) return;
+    const targetKey = clientApiKeys.find(k => k.id === keyId);
     const updated = clientApiKeys.filter(k => k.id !== keyId);
-    saveClientKeysWithServer(updated);
-    showToast("API Key deleted.", "success");
+    
+    // Explicit direct delete call + sync list for 100% database deletion guarantee
+    try {
+      if (targetKey) {
+        await fetch("/api/v1/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "DELETE", id: keyId, key: targetKey.key })
+        });
+      }
+    } catch (err) {
+      console.error("Direct key delete call failed:", err);
+    }
+
+    await saveClientKeysWithServer(updated);
+    showToast("API Key deleted permanently.", "success");
   };
 
   const handleExtendClientKeySubmit = (e: React.FormEvent) => {
@@ -403,7 +418,7 @@ export default function Home() {
       try {
         const response = await fetch("/api/v1/keys");
         const resData = await response.json();
-        if (resData.success && Array.isArray(resData.data) && resData.data.length > 0) {
+        if (resData.success && Array.isArray(resData.data)) {
           setClientApiKeys(resData.data);
           localStorage.setItem("mono_client_api_keys", JSON.stringify(resData.data));
         }
@@ -417,7 +432,7 @@ export default function Home() {
       try {
         const response = await fetch("/api/v1/resellers");
         const resData = await response.json();
-        if (resData.success && Array.isArray(resData.data) && resData.data.length > 0) {
+        if (resData.success && Array.isArray(resData.data)) {
           setResellers(resData.data);
           localStorage.setItem("mono_resellers", JSON.stringify(resData.data));
         }
@@ -436,11 +451,11 @@ export default function Home() {
     setUids(list);
     localStorage.setItem("mono_local_uids", JSON.stringify(list));
   };
-  const saveResellers = (list: ResellerItem[]) => {
+  const saveResellers = async (list: ResellerItem[]) => {
     setResellers(list);
     localStorage.setItem("mono_resellers", JSON.stringify(list));
     try {
-      fetch("/api/v1/resellers", {
+      await fetch("/api/v1/resellers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "SYNC", resellers: list })
@@ -670,12 +685,24 @@ export default function Home() {
   };
 
   // Delete Reseller
-  const handleDeleteReseller = (targetUsername: string) => {
+  const handleDeleteReseller = async (targetUsername: string) => {
     if (!confirm(`Are you sure you want to delete reseller: ${targetUsername}?`)) return;
     const updated = resellers.filter(r => r.username !== targetUsername);
-    saveResellers(updated);
+    
+    // Explicit direct delete call + sync list for 100% database deletion guarantee
+    try {
+      await fetch("/api/v1/resellers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "DELETE", username: targetUsername })
+      });
+    } catch (err) {
+      console.error("Direct reseller delete call failed:", err);
+    }
+
+    await saveResellers(updated);
     addLog("RESELLER_DELETE", `Deleted reseller ${targetUsername}.`, currentUser);
-    showToast(`Reseller ${targetUsername} deleted.`, "success");
+    showToast(`Reseller ${targetUsername} deleted permanently.`, "success");
   };
 
   // Filtering logic

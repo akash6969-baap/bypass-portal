@@ -44,7 +44,19 @@ export async function saveClientApiKeysAsync(keys: ClientApiKeyRecord[]): Promis
   if (!db) return;
 
   try {
+    const activeKeys = keys.map(k => k.key ? k.key.trim() : "").filter(Boolean);
+    const activeIds = keys.map(k => k.id ? String(k.id).trim() : "").filter(Boolean);
+
+    // Remove deleted keys from MongoDB cluster so they do not reappear on refresh
+    await ApiKey.deleteMany({
+      $and: [
+        { key: { $nin: activeKeys } },
+        { id: { $nin: activeIds } }
+      ]
+    });
+
     for (const k of keys) {
+      if (!k.key) continue;
       await ApiKey.findOneAndUpdate(
         { key: k.key.trim() },
         {
@@ -62,6 +74,28 @@ export async function saveClientApiKeysAsync(keys: ClientApiKeyRecord[]): Promis
     }
   } catch (err) {
     console.error("Error syncing keys to MongoDB:", err);
+  }
+}
+
+/**
+ * Permanently deletes a single client API key from MongoDB Cluster.
+ */
+export async function deleteClientApiKeyAsync(keyOrId: string): Promise<boolean> {
+  const db = await dbConnect();
+  if (!db) return false;
+
+  try {
+    const clean = keyOrId.trim();
+    const result = await ApiKey.deleteMany({
+      $or: [
+        { key: clean },
+        { id: clean }
+      ]
+    });
+    return result.deletedCount > 0;
+  } catch (err) {
+    console.error("Error deleting API key from MongoDB:", err);
+    return false;
   }
 }
 
@@ -84,15 +118,9 @@ export async function validateAndDeductCredit(authKey: string, deductAmount: num
 
   const cleanKey = authKey.trim();
 
-  // Allow Master Admin System Key from Environment or hardcoded fallback versions
-  const masterEnvKey = process.env.MANI_API_KEY || "MANI272-4B7D4174A9D8902C2A8A190B06EE6347";
-  if (
-    cleanKey === masterEnvKey || 
-    cleanKey === "MANI272-4B7D4174A9D8902C2A8A190B06EE6347" || 
-    cleanKey === "MANI272-3AB5727F69D214062DA3B8468B708D36" ||
-    cleanKey.startsWith("X-AUTH-MASTER") || 
-    cleanKey.startsWith("X-AUTH-ADMIN")
-  ) {
+  // Allow Master Admin System Key from Environment
+  const masterEnvKey = process.env.MANI_API_KEY || "MANI272-1849E54F1E89E81F29920EF7AC318AC3";
+  if (cleanKey === masterEnvKey || cleanKey.startsWith("X-AUTH-MASTER") || cleanKey.startsWith("X-AUTH-ADMIN")) {
     return { success: true, remainingCredits: 999999, clientName: "Master Admin Gateway" };
   }
 
